@@ -1,0 +1,67 @@
+name: Paneles vendedores
+
+on:
+  schedule:
+    # Cada 2 horas entre ~8:20 y ~20:20 hora de Chile (horario UTC)
+    - cron: '20 11-23/2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Descargar datos desde OneDrive
+        env:
+          ONEDRIVE_URL: ${{ secrets.ONEDRIVE_URL }}
+        run: |
+          mkdir -p pages
+          u="$ONEDRIVE_URL"
+          case "$u" in *\?*) u="$u&download=1";; *) u="$u?download=1";; esac
+          curl -sSfL -o pages/p1.txt "$u" || { echo "No se pudo descargar el archivo desde OneDrive (revisa el link)"; exit 1; }
+          head -c 9 pages/p1.txt | grep -q SOLERGZ1 || { echo "El link de OneDrive no entrega el archivo de datos (revisa que sea 'Cualquier persona con el vinculo')"; exit 1; }
+
+      - name: Armar paneles
+        env:
+          SOLER_CONFIG: ${{ secrets.SOLER_CONFIG }}
+          CLAVE: ${{ secrets.CLAVE }}
+        run: |
+          printf '%s' "$SOLER_CONFIG" > cfg.json
+          node actualizar.mjs cfg.json pages plantilla.html out > out.log 2> err.log || true
+          if ! grep -q '"estado": "OK"' out.log; then grep -o 'ERROR.*' out.log || echo "Fallo al armar los paneles"; exit 1; fi
+          grep -o '"generado": "[^"]*"' out.log
+          node publicar.mjs out/vendedores vendedores.txt site
+
+      - name: Mantener activa la tarea (GitHub pausa las tareas tras 60 dias sin cambios)
+        run: |
+          last=$(git log -1 --format=%ct); now=$(date +%s)
+          if [ $((now - last)) -gt 4320000 ]; then
+            date -u > ultima-ejecucion.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add ultima-ejecucion.txt && git commit -m "Mantener activa la tarea" && git push
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
