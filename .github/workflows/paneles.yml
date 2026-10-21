@@ -3,7 +3,7 @@ name: Paneles vendedores
 on:
   schedule:
     # Cada 2 horas entre ~8:20 y ~20:20 hora de Chile (horario UTC)
-    - cron: '20 11-23/2 * * *'
+    - cron: '20 * * *'
   workflow_dispatch:
 
 permissions:
