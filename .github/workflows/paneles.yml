@@ -33,10 +33,19 @@ jobs:
           ONEDRIVE_URL: ${{ secrets.ONEDRIVE_URL }}
         run: |
           mkdir -p pages
-          u="$ONEDRIVE_URL"
-          case "$u" in *\?*) u="$u&download=1";; *) u="$u?download=1";; esac
-          curl -sSfL -o pages/p1.txt "$u" || { echo "No se pudo descargar el archivo desde OneDrive (revisa el link)"; exit 1; }
-          head -c 9 pages/p1.txt | grep -q SOLERGZ1 || { echo "El link de OneDrive no entrega el archivo de datos (revisa que sea 'Cualquier persona con el vinculo')"; exit 1; }
+          u=$(printf '%s' "$ONEDRIVE_URL" | tr -d '[:space:]"')
+          case "$u" in *\?*) d="$u&download=1";; *) d="$u?download=1";; esac
+          enc=$(printf '%s' "$u" | base64 -w0 | tr '+/' '-_' | tr -d '=')
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+          ok=0; n=0
+          for x in "$d" "https://api.onedrive.com/v1.0/shares/u!$enc/root/content" "$u"; do
+            n=$((n+1))
+            code=$(curl -sSL -A "$UA" -c cj.txt -b cj.txt -o pages/p1.txt -w '%{http_code}' "$x" || echo fallo)
+            if head -c 9 pages/p1.txt 2>/dev/null | grep -q SOLERGZ1; then echo "Descarga OK (metodo $n)"; ok=1; break; fi
+            echo "Metodo $n: respuesta HTTP [$code] sin el archivo de datos"
+          done
+          rm -f cj.txt
+          [ $ok = 1 ] || { echo "OneDrive no entrega el archivo con ese link. Abrelo en una ventana de incognito: si pide iniciar sesion, el link no es 'Cualquier persona'."; exit 1; }
 
       - name: Armar paneles
         env:
