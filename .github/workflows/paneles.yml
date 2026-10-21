@@ -40,9 +40,11 @@ jobs:
           ok=0; n=0
           for x in "$d" "https://api.onedrive.com/v1.0/shares/u!$enc/root/content" "$u"; do
             n=$((n+1))
-            code=$(curl -sSL -A "$UA" -c cj.txt -b cj.txt -o pages/p1.txt -w '%{http_code}' "$x" || echo fallo)
+            code=$(curl -sSL -A "$UA" -c cj.txt -b cj.txt -o pages/p1.txt -w '%{http_code} %{url_effective}' "$x" || echo fallo)
             if head -c 9 pages/p1.txt 2>/dev/null | grep -q SOLERGZ1; then echo "Descarga OK (metodo $n)"; ok=1; break; fi
-            echo "Metodo $n: respuesta HTTP [$code] sin el archivo de datos"
+            host=$(printf '%s' "$code" | sed -E 's#^[^ ]* https?://([^/]+).*#\1#')
+            tit=$(grep -o -i '<title>[^<]*' pages/p1.txt 2>/dev/null | head -1 | cut -c8-80)
+            echo "Metodo $n: HTTP ${code%% *} | termina en: $host | tipo: $(file -b pages/p1.txt 2>/dev/null | cut -c1-40) | titulo: $tit"
           done
           rm -f cj.txt
           [ $ok = 1 ] || { echo "OneDrive no entrega el archivo con ese link. Abrelo en una ventana de incognito: si pide iniciar sesion, el link no es 'Cualquier persona'."; exit 1; }
