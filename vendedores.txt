@@ -7,3 +7,5 @@ jorge-quintanilla
 marco-andrades
 felipe-aravena
 christian-ramirez
+# Panel comercial completo (todos los vendedores)
+completo

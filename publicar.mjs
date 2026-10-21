@@ -10,7 +10,8 @@ fs.mkdirSync(dirSitio, { recursive: true });
 const noindex = '<meta name="robots" content="noindex, nofollow">';
 let ok = 0, faltan = [];
 for (const slug of slugs) {
-  const src = path.join(dirV, slug + '.html');
+  // "completo" = panel comercial completo (todos los vendedores)
+  const src = slug === 'completo' ? path.join(dirV, '..', 'publico.html') : path.join(dirV, slug + '.html');
   if (!fs.existsSync(src)) { faltan.push(slug); continue; }
   const suf = crypto.createHash('sha256').update(clave + ':' + slug).digest('hex').slice(0, 8);
   let html = fs.readFileSync(src, 'utf8');
