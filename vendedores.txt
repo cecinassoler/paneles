@@ -1,0 +1,9 @@
+# Paneles que se publican (uno por linea, nombre del archivo sin .html)
+alonso-jaque
+david-espinoza
+heraldo-ortiz
+alejandro-vallejos-ignacio-molines
+jorge-quintanilla
+marco-andrades
+felipe-aravena
+christian-ramirez
