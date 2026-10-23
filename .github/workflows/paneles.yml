@@ -72,7 +72,7 @@ jobs:
           rm -f cj.txt
           if [ $ok = 1 ]; then
             pip install --quiet openpyxl
-            python3 -I metas_xlsx.py metas.xlsx metas.txt || rm -f metas.txt
+            python3 -I metas_xlsx.py metas.xlsx metas.txt metas_anio.txt || rm -f metas.txt
           else
             rm -f metas.xlsx
             echo "::warning::OneDrive no entrega el Excel de metas con ese link (debe ser 'Cualquier persona'): se usan las metas de SOLER_CONFIG"
@@ -83,11 +83,20 @@ jobs:
           SOLER_CONFIG: ${{ secrets.SOLER_CONFIG }}
           CLAVE: ${{ secrets.CLAVE }}
         run: |
-          printf '%s' "$SOLER_CONFIG" > cfg_base.json
-          # metas.mjs siempre deja cfg.json: con las metas del Excel o, si no pudo leerlas, igual a SOLER_CONFIG
-          node metas.mjs metas.txt cfg_base.json cfg.json | tee metas.log
+          printf '%s' "$SOLER_CONFIG" > cfg_secreto.json
+          # metas ya cargadas antes, guardadas en el repositorio (metas_guardadas.json)
+          node guardar_metas.mjs unir cfg_secreto.json metas_guardadas.json cfg_base.json
+          # metas.mjs siempre deja cfg.json: con las metas del Excel o, si no pudo leerlas, igual a cfg_base.json
+          node metas.mjs metas.txt cfg_base.json cfg.json metas_anio.txt | tee metas.log
+          # solo se usan (y se guardan) las metas de los ultimos 12 meses: desde el mismo mes del año pasado en adelante
+          node guardar_metas.mjs recortar cfg.json
+          if grep -q '"estado":"CAMBIO"' metas.log && [ "$(node guardar_metas.mjs guardar cfg.json metas_guardadas.json)" = "guardadas: cambio" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add metas_guardadas.json && git commit -m "Metas actualizadas desde el Excel" && git push || echo "::warning::No se pudieron guardar las metas en el repositorio"
+          fi
           grep -q '"estado":"ERROR"' metas.log && echo "::warning::Metas no cargadas: $(grep -o '"error":"[^"]*"' metas.log)"
-          grep -q '"estado":"OMITIDO"' metas.log && echo "::warning::Metas omitidas: $(grep -o '"motivo":"[^"]*"' metas.log)"
+          grep -q '"estado":"OMITIDO"' metas.log && echo "::warning::Metas omitidas: $(grep -o '"motivo":"[^"]*"' metas.log). Agrega el año en la planilla (celda: Año 2027)"
           grep -q '"avisos":\[".*' metas.log && echo "::warning::$(grep -o '"avisos":\[[^]]*\]' metas.log)"
           node actualizar.mjs cfg.json pages plantilla.html out > out.log 2> err.log || true
           if ! grep -q '"estado": "OK"' out.log; then grep -o 'ERROR.*' out.log || echo "Fallo al armar los paneles"; exit 1; fi
