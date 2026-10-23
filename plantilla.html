@@ -310,6 +310,8 @@
   }
   .masthead .upd{ font-size:13px; font-weight:600; margin-top:6px; }
   .masthead .upd:empty{ display:none; }
+  /* Paneles por vendedor: sin selector de vendedor ni bodega */
+  .panel-vendedor .filters-item, .panel-vendedor .filters label:has(#bodegaSelect){ display:none !important; }
 </style>
 <div class="wrap">
 
@@ -637,7 +639,7 @@
   </section>
 
   <footer>
-    <span id="footNote">Fuente: Inet_Comercial_JSEHok (datos al 19-10-26, 10:08 a. m.) · kilos recalculados con factor de conversión por producto · precios promedio = venta neta / kilos.</span>
+    <span id="footNote">Fuente: Inet_Comercial_JSEHok (datos al 22-10-26, 3:37 p. m.) · kilos recalculados con factor de conversión por producto · precios promedio = venta neta / kilos.</span>
     <span>Versión pública de solo lectura.</span>
   </footer>
 
@@ -664,6 +666,9 @@
 window.__DATA__ = {};
 </script>
 <script>
+if(window.__DATA__&&window.__DATA__.meta&&window.__DATA__.meta.vendedor) document.documentElement.classList.add('panel-vendedor');
+</script>
+<script>
 (function(){
 'use strict';
 var DATA = window.__DATA__;
@@ -672,13 +677,34 @@ DATA.porClienteMensualCobertura = DATA.porClienteMensualCobertura || {};
 DATA.churn.perdidosPorMes = DATA.churn.perdidosPorMes || {};
 var MONTHS = DATA.months;
 var MONTH_LABELS = DATA.monthLabels;
-var MONTHS_2026 = MONTHS.filter(function(m){ return m.slice(0,4)==='2026'; });
+// Meses con presupuesto: los que traen metas (ultimos 12 meses moviles), en vez de un año fijo.
+var MESES_META = (function(){
+  var s = {};
+  [DATA.cumplimientoTotal].concat(Object.keys(DATA.cumplimientoPorVendedor||{}).map(function(v){ return DATA.cumplimientoPorVendedor[v]; }))
+    .forEach(function(o){ Object.keys(o||{}).forEach(function(k){ s[k]=1; }); });
+  return MONTHS.filter(function(m){ return s[m]; });
+})();
+function rangoMeses(ms){ return ms.length ? (MONTH_LABELS[ms[0]]+(ms.length>1?' – '+MONTH_LABELS[ms[ms.length-1]]:'')) : '—'; }
+var RANGO_DATOS = rangoMeses(MONTHS);
+// Botones rapidos de año: ultimo año con datos y el anterior (antes estaban fijos en 2026 y 2025)
+(function(){
+  var MC=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  var anios = MONTHS.map(function(m){ return m.slice(0,4); }).filter(function(y,i,a){ return a.indexOf(y)===i; });
+  var btns = Array.prototype.slice.call(document.querySelectorAll('#periodQuick button')).filter(function(b){ return /^\d{4}$/.test(b.getAttribute('data-quick')); });
+  btns.forEach(function(b, i){
+    var y = anios[anios.length-1-i];
+    if(!y){ b.hidden = true; return; }
+    var ms = MONTHS.filter(function(m){ return m.slice(0,4)===y; });
+    b.setAttribute('data-quick', y);
+    b.textContent = y+' ('+(ms.length===12 ? 'completo' : MC[+ms[0].slice(5)-1]+'–'+MC[+ms[ms.length-1].slice(5)-1])+')';
+  });
+})();
 var ALL_VENDORS = DATA.vendedores.slice();
 
 // ---------------- bodegas (grupos predefinidos de vendedores) ----------------
 // "Venta Oficina" queda fuera de todas las bodegas a propósito.
 var BODEGAS = {
-  RM: { label:'Depósito RM', vendors:['Alejandro Vallejos / Ignacio Molines','Jorge Quintanilla','Christian Ramírez','Luis Osorio'] },
+  RM: { label:'Depósito RM', vendors:['Alejandro Vallejos','Alejandro Vallejos / Ignacio Molines','Jorge Quintanilla','Christian Ramírez','Luis Osorio'] },
   CONCEPCION: { label:'Depósito Concepción', vendors:['Marco Andrades','Felipe Aravena','Marco Vázquez'] },
   CURICO: { label:'Depósito Curicó', vendors:['Alonso Jaque','David Espinoza','Heraldo Ortiz','Juan Carlos Vargas'] },
 };
@@ -975,9 +1001,8 @@ periodQuick.addEventListener('click', function(e){
   if(!btn) return;
   var q = btn.getAttribute('data-quick'), months;
   if(q==='all') months = MONTHS.slice();
-  else if(q==='2026') months = MONTHS.filter(function(m){ return m.slice(0,4)==='2026'; });
-  else if(q==='2025') months = MONTHS.filter(function(m){ return m.slice(0,4)==='2025'; });
-  else { var n = parseInt(q,10); months = MONTHS.slice(Math.max(0,MONTHS.length-n)); }
+  else if(/^\d{4}$/.test(q)) months = MONTHS.filter(function(m){ return m.slice(0,4)===q; });
+    else { var n = parseInt(q,10); months = MONTHS.slice(Math.max(0,MONTHS.length-n)); }
   setCheckboxesToMonths(months);
 });
 periodCancel.addEventListener('click', function(){ closePeriodPopover(); });
@@ -1117,7 +1142,7 @@ function mergedBudgetSource(){
   var sources = state.selectedVendors.map(function(v){ return DATA.cumplimientoPorVendedor[v]; }).filter(Boolean);
   if(!sources.length) return null;
   var merged = {};
-  MONTHS_2026.forEach(function(mk){
+  MESES_META.forEach(function(mk){
     var agg = {ventaReal:0,ventaMeta:0,kilosReal:0,kilosMeta:0,clientesReal:0,clientesMeta:0};
     var any = false;
     sources.forEach(function(src){
@@ -1140,10 +1165,10 @@ function renderPresupuesto(){
     if(chartPresupuesto){ chartPresupuesto.destroy(); chartPresupuesto=null; }
     return;
   }
-  var budgetMonths = state.selectedMonths.filter(function(mk){ return MONTHS_2026.indexOf(mk)>=0; });
+  var budgetMonths = state.selectedMonths.filter(function(mk){ return MESES_META.indexOf(mk)>=0; });
   if(!budgetMonths.length){
-    noteEl.textContent = 'El presupuesto solo cubre Ene – Sep 2026 · ajusta el período para ver cumplimiento';
-    tilesEl.innerHTML = '<div class="card-note">No hay meses del presupuesto (2026) dentro del período seleccionado.</div>';
+    noteEl.textContent = 'El presupuesto cubre '+rangoMeses(MESES_META)+' · ajusta el período para ver cumplimiento';
+    tilesEl.innerHTML = '<div class="card-note">No hay meses con presupuesto dentro del período seleccionado.</div>';
     if(chartPresupuesto){ chartPresupuesto.destroy(); chartPresupuesto=null; }
     return;
   }
@@ -1319,7 +1344,7 @@ function renderMensual(){
     chartUnavailableNote(document.getElementById('chartMensualVenta'));
     chartUnavailableNote(document.getElementById('chartMensualKilos'));
   }
-  document.getElementById('mensualNote').textContent = 'Ene 2025 – Sep 2026 · '+buildNote({noPeriod:true})+' · no aplica el filtro de período (muestra todo el histórico)';
+  document.getElementById('mensualNote').textContent = RANGO_DATOS+' · '+buildNote({noPeriod:true})+' · no aplica el filtro de período (muestra todo el histórico)';
 }
 function hexAlpha(hex, a){
   hex = hex.trim();
@@ -1676,7 +1701,7 @@ function renderTendencia(){
   } else {
     chartUnavailableNote(document.getElementById('chartTendencia'));
   }
-  document.getElementById('tendenciaNote').textContent = 'Ene 2025 – Sep 2026 · '+buildNote({noPeriod:true})+' · no aplica el filtro de período · canal Cobertura (excl. Venta Oficina)';
+  document.getElementById('tendenciaNote').textContent = RANGO_DATOS+' · '+buildNote({noPeriod:true})+' · no aplica el filtro de período · canal Cobertura (excl. Venta Oficina)';
 }
 
 // ======================================================================
