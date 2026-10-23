@@ -28,6 +28,10 @@ jobs:
         with:
           node-version: 22
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Descargar datos desde OneDrive
         env:
           ONEDRIVE_URL: ${{ secrets.ONEDRIVE_URL }}
@@ -49,12 +53,42 @@ jobs:
           rm -f cj.txt
           [ $ok = 1 ] || { echo "OneDrive no entrega el archivo con ese link. Abrelo en una ventana de incognito: si pide iniciar sesion, el link no es 'Cualquier persona'."; exit 1; }
 
+      - name: Descargar metas desde OneDrive (si falla, se usan las metas de SOLER_CONFIG)
+        env:
+          METAS_URL: ${{ secrets.METAS_URL }}
+        run: |
+          u=$(printf '%s' "$METAS_URL" | tr -d '[:space:]"')
+          if [ -z "$u" ]; then echo "::warning::Falta el secreto METAS_URL: se usan las metas de SOLER_CONFIG"; exit 0; fi
+          case "$u" in *\?*) d="$u&download=1";; *) d="$u?download=1";; esac
+          enc=$(printf '%s' "$u" | base64 -w0 | tr '+/' '-_' | tr -d '=')
+          UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+          ok=0; n=0
+          for x in "$d" "https://api.onedrive.com/v1.0/shares/u!$enc/root/content" "$u"; do
+            n=$((n+1))
+            code=$(curl -sSL -A "$UA" -c cj.txt -b cj.txt -o metas.xlsx -w '%{http_code}' "$x" || echo fallo)
+            if head -c 2 metas.xlsx 2>/dev/null | grep -q PK; then echo "Metas descargadas (metodo $n)"; ok=1; break; fi
+            echo "Metas metodo $n: HTTP $code | tipo: $(file -b metas.xlsx 2>/dev/null | cut -c1-40)"
+          done
+          rm -f cj.txt
+          if [ $ok = 1 ]; then
+            pip install --quiet openpyxl
+            python3 -I metas_xlsx.py metas.xlsx metas.txt || rm -f metas.txt
+          else
+            rm -f metas.xlsx
+            echo "::warning::OneDrive no entrega el Excel de metas con ese link (debe ser 'Cualquier persona'): se usan las metas de SOLER_CONFIG"
+          fi
+
       - name: Armar paneles
         env:
           SOLER_CONFIG: ${{ secrets.SOLER_CONFIG }}
           CLAVE: ${{ secrets.CLAVE }}
         run: |
-          printf '%s' "$SOLER_CONFIG" > cfg.json
+          printf '%s' "$SOLER_CONFIG" > cfg_base.json
+          # metas.mjs siempre deja cfg.json: con las metas del Excel o, si no pudo leerlas, igual a SOLER_CONFIG
+          node metas.mjs metas.txt cfg_base.json cfg.json | tee metas.log
+          grep -q '"estado":"ERROR"' metas.log && echo "::warning::Metas no cargadas: $(grep -o '"error":"[^"]*"' metas.log)"
+          grep -q '"estado":"OMITIDO"' metas.log && echo "::warning::Metas omitidas: $(grep -o '"motivo":"[^"]*"' metas.log)"
+          grep -q '"avisos":\[".*' metas.log && echo "::warning::$(grep -o '"avisos":\[[^]]*\]' metas.log)"
           node actualizar.mjs cfg.json pages plantilla.html out > out.log 2> err.log || true
           if ! grep -q '"estado": "OK"' out.log; then grep -o 'ERROR.*' out.log || echo "Fallo al armar los paneles"; exit 1; fi
           grep -o '"generado": "[^"]*"' out.log
