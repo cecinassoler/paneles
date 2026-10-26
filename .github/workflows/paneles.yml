@@ -82,6 +82,7 @@ jobs:
         env:
           SOLER_CONFIG: ${{ secrets.SOLER_CONFIG }}
           CLAVE: ${{ secrets.CLAVE }}
+          CLAVES: ${{ secrets.CLAVES }}
         run: |
           printf '%s' "$SOLER_CONFIG" > cfg_secreto.json
           # metas ya cargadas antes, guardadas en el repositorio (metas_guardadas.json)
@@ -101,6 +102,13 @@ jobs:
           node actualizar.mjs cfg.json pages plantilla.html out > out.log 2> err.log || true
           if ! grep -q '"estado": "OK"' out.log; then grep -o 'ERROR.*' out.log || echo "Fallo al armar los paneles"; exit 1; fi
           grep -o '"generado": "[^"]*"' out.log
+          # Cifrado con clave por pagina (secreto CLAVES). Sin claves o si el cifrado falla, no se publica nada.
+          if [ -z "$CLAVES" ]; then echo "ERROR: falta el secreto CLAVES (claves de las paginas)"; exit 1; fi
+          printf '%s' "$CLAVES" > claves.json
+          node cifrar.mjs claves.json out > cifrar.log 2>&1 || true
+          rm -f claves.json
+          if ! grep -q '"estado": "OK"' cifrar.log; then cat cifrar.log; echo "Fallo el cifrado: no se publica"; exit 1; fi
+          grep -A12 '"sinClaveEliminados"' cifrar.log | head -12
           node publicar.mjs out/vendedores vendedores.txt site
 
       - name: Mantener activa la tarea (GitHub pausa las tareas tras 60 dias sin cambios)
