@@ -1,4 +1,4 @@
-// Panel Comercial Cecinas Soler - actualizacion de datos (v4: margen + metricas Cobertura + paneles por vendedor + paneles de grupo)
+// Panel Comercial Cecinas Soler - actualizacion de datos (v5: margen solo en panel completo + metricas Cobertura + paneles por vendedor + paneles de grupo)
 // Uso: node actualizar.mjs <config.json> <dirPaginas> <publico.html> <dirSalida> [genAnterior] [nAnterior] [shaAnterior]
 import fs from 'node:fs'; import path from 'node:path'; import zlib from 'node:zlib'; import crypto from 'node:crypto';
 var SOLER_CFG = (function(){ var j=JSON.parse(fs.readFileSync(process.argv[2],'utf8')); return j.data||j; })();
@@ -214,6 +214,18 @@ function llenar(p, Dx, sx) {
 const escH = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const slug = t => String(t).toLowerCase().normalize('NFD').replace(/\p{M}/gu, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 let pubOut = null; const panelesV = [];
+// Paneles de vendedores y de grupo: SIN margen. Se borra el dato (no viaja en la pagina) y se quitan
+// la tarjeta "Margen" y la tabla "Rentabilidad por categoria". El panel completo (gerencia) lo conserva.
+const sinMargenDatos = o => { if (Array.isArray(o)) o.forEach(sinMargenDatos); else if (o && typeof o === 'object') { delete o.margen; delete o.margenPct; for (const k in o) sinMargenDatos(o[k]); } return o; };
+function sinMargenHtml(p) {
+  const cambios = [
+    [/\n[ \t]*<section class="card" id="sec-rentabilidad">[\s\S]*?<\/section>/, ''],
+    [/\n[ \t]*\{label:'Margen',[^\n]*\},/, ''],
+    [/\n[ \t]*safe\('rentabilidad', renderRentabilidad\);/, ''],
+  ];
+  for (const [re, r] of cambios) { if (!re.test(p)) fail('no pude quitar el margen de la plantilla: ' + re); p = p.replace(re, r); }
+  return p.replace('</style>', '  @media (min-width:1181px){ .kpi-row{ grid-template-columns:repeat(5,1fr); } }\n</style>');
+}
 if (publicoHtml && fs.existsSync(publicoHtml)) {
   const tpl = fs.readFileSync(publicoHtml, 'utf8');
   pubOut = path.resolve(outDir, 'publico.html'); fs.writeFileSync(pubOut, llenar(tpl, D, s));
@@ -231,7 +243,8 @@ if (publicoHtml && fs.existsSync(publicoHtml)) {
     SOLER_CFG.metas = cfg0.metas; SOLER_CFG.metasTotal = cfg0.metasTotal; SOLER_CFG.ordenVendedores = cfg0.ordenVendedores;
     Dv.meta.generado = generado; Dv.meta.vendedor = V;
     if (Object.keys(Dv.cube).some(k => k !== 'TODOS' && k !== V)) fail('panel de ' + V + ' trae datos de otro vendedor');
-    let pv = llenar(tpl, Dv, JSON.stringify(Dv));
+    sinMargenDatos(Dv);
+    let pv = sinMargenHtml(llenar(tpl, Dv, JSON.stringify(Dv)));
     pv = pv.replace(/<title>[^<]*<\/title>/, `<title>Panel Comercial — ${escH(V)}</title>`);
     pv = pv.replace('<h1>Panel Comercial</h1>', `<h1>Panel Comercial · ${escH(V)}</h1>`);
     pv = pv.replace('</style>', '  .filters-item, .filters label:has(#bodegaSelect){ display:none !important; }\n</style>');
@@ -260,7 +273,8 @@ if (publicoHtml && fs.existsSync(publicoHtml)) {
     const titulo = Gp.titulo || Gp.archivo.replace(/\.html$/, '');
     Dg.meta.generado = generado; Dg.meta.grupo = titulo; // sin meta.vendedor: el panel de grupo conserva el selector de vendedores
     if (Object.keys(Dg.cube).some(k => k !== 'TODOS' && !Vs.includes(k))) fail('panel de grupo ' + titulo + ' trae datos de otro vendedor');
-    let pg = llenar(tpl, Dg, JSON.stringify(Dg));
+    sinMargenDatos(Dg);
+    let pg = sinMargenHtml(llenar(tpl, Dg, JSON.stringify(Dg)));
     pg = pg.replace(/<title>[^<]*<\/title>/, `<title>Panel Comercial ${escH(titulo)}</title>`);
     pg = pg.replace('<h1>Panel Comercial</h1>', `<h1>Panel Comercial ${escH(titulo)}</h1>`);
     pg = pg.split('Total Compañía').join('Total ' + escH(titulo));
