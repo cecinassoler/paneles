@@ -224,7 +224,10 @@ function sinMargenHtml(p) {
     [/\n[ \t]*safe\('rentabilidad', renderRentabilidad\);/, ''],
   ];
   for (const [re, r] of cambios) { if (!re.test(p)) fail('no pude quitar el margen de la plantilla: ' + re); p = p.replace(re, r); }
-  return p.replace('</style>', '  @media (min-width:1181px){ .kpi-row{ grid-template-columns:repeat(5,1fr); } }\n</style>');
+  // la regla va en la hoja de estilos del panel (la ultima antes del contenido), no en la primera que aparezca
+  const w = p.indexOf('<div class="wrap">'), e = w < 0 ? -1 : p.lastIndexOf('</style>', w);
+  if (e < 0) fail('no encontre la hoja de estilos del panel');
+  return p.slice(0, e) + '  @media (min-width:1181px){ .kpi-row{ grid-template-columns:repeat(5,1fr); } }\n' + p.slice(e);
 }
 if (publicoHtml && fs.existsSync(publicoHtml)) {
   const tpl = fs.readFileSync(publicoHtml, 'utf8');
