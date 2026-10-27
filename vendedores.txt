@@ -7,5 +7,7 @@ jorge-quintanilla
 marco-andrades
 felipe-aravena
 christian-ramirez
+# Panel de grupo Santiago (Alejandro Vallejos / Ignacio Molines, Jorge Quintanilla, Luis Osorio, Christian Ramirez)
+santiago
 # Panel comercial completo (todos los vendedores)
 completo

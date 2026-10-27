@@ -1,4 +1,4 @@
-// Panel Comercial Cecinas Soler - actualizacion de datos (v3: margen + metricas Cobertura + paneles por vendedor)
+// Panel Comercial Cecinas Soler - actualizacion de datos (v4: margen + metricas Cobertura + paneles por vendedor + paneles de grupo)
 // Uso: node actualizar.mjs <config.json> <dirPaginas> <publico.html> <dirSalida> [genAnterior] [nAnterior] [shaAnterior]
 import fs from 'node:fs'; import path from 'node:path'; import zlib from 'node:zlib'; import crypto from 'node:crypto';
 var SOLER_CFG = (function(){ var j=JSON.parse(fs.readFileSync(process.argv[2],'utf8')); return j.data||j; })();
@@ -238,6 +238,36 @@ if (publicoHtml && fs.existsSync(publicoHtml)) {
     const fv = path.resolve(outDir, 'vendedores', slug(V) + '.html'); fs.writeFileSync(fv, pv);
     const tv = Object.values(Dv.cube.TODOS.TODOS.mensual).reduce((x, m) => x + m.venta, 0);
     panelesV.push({ vendedor: V, archivo: fv, venta: Math.round(tv), bytes: pv.length });
+  }
+  // Paneles de grupo (ej. Santiago): toda la informacion, pero SOLO de los vendedores del grupo.
+  // Grupos desde la config (gruposPaneles) o, si no viene, desde grupos.json en la carpeta actual.
+  let grupos = SOLER_CFG.gruposPaneles;
+  if (!grupos && fs.existsSync('grupos.json')) { const gj = JSON.parse(fs.readFileSync('grupos.json', 'utf8')); grupos = gj.gruposPaneles || gj; }
+  for (const Gp of (Array.isArray(grupos) ? grupos : [])) {
+    if (!Gp || !Gp.archivo || !/^[a-z0-9-]+\.html$/.test(Gp.archivo) || !Array.isArray(Gp.vendedores) || !Gp.vendedores.length) fail('grupo de paneles mal definido: ' + JSON.stringify(Gp));
+    // un vendedor es del grupo si todas las palabras de algun miembro estan en su nombre (sin tildes ni mayusculas)
+    const miembros = Gp.vendedores.map(m => slug(m).split('-').filter(Boolean));
+    const coincide = t => { const w = new Set(slug(t).split('-')); return miembros.some(m => m.every(x => w.has(x))); };
+    const esDelGrupo = raw => vOf(raw) !== 'Venta Oficina' && (coincide(vOf(raw)) || coincide(raw));
+    const rg = recs.filter(r => esDelGrupo(r.vend));
+    if (!rg.length) continue;
+    const Vs = [...new Set(rg.map(r => vOf(r.vend)))];
+    const mg = {}, mt = {};
+    for (const V of Vs) if (cfg0.metas[V]) { mg[V] = cfg0.metas[V]; for (const mk in cfg0.metas[V]) { const a = mt[mk] || (mt[mk] = [0, 0, 0]); cfg0.metas[V][mk].forEach((x, k) => a[k] += +x || 0); } }
+    SOLER_CFG.metas = mg; SOLER_CFG.metasTotal = mt; SOLER_CFG.ordenVendedores = (cfg0.ordenVendedores || []).filter(v => Vs.includes(v));
+    const Dg = buildSolerData(rg, { at, fuente });
+    SOLER_CFG.metas = cfg0.metas; SOLER_CFG.metasTotal = cfg0.metasTotal; SOLER_CFG.ordenVendedores = cfg0.ordenVendedores;
+    const titulo = Gp.titulo || Gp.archivo.replace(/\.html$/, '');
+    Dg.meta.generado = generado; Dg.meta.grupo = titulo; // sin meta.vendedor: el panel de grupo conserva el selector de vendedores
+    if (Object.keys(Dg.cube).some(k => k !== 'TODOS' && !Vs.includes(k))) fail('panel de grupo ' + titulo + ' trae datos de otro vendedor');
+    let pg = llenar(tpl, Dg, JSON.stringify(Dg));
+    pg = pg.replace(/<title>[^<]*<\/title>/, `<title>Panel Comercial ${escH(titulo)}</title>`);
+    pg = pg.replace('<h1>Panel Comercial</h1>', `<h1>Panel Comercial ${escH(titulo)}</h1>`);
+    pg = pg.split('Total Compañía').join('Total ' + escH(titulo));
+    pg = pg.replace('</style>', '  .filters label:has(#bodegaSelect){ display:none !important; }\n</style>');
+    const fg = path.resolve(outDir, 'vendedores', Gp.archivo); fs.writeFileSync(fg, pg);
+    const tg = Object.values(Dg.cube.TODOS.TODOS.mensual).reduce((x, m) => x + m.venta, 0);
+    panelesV.push({ vendedor: 'Grupo ' + titulo, integrantes: Vs, archivo: fg, venta: Math.round(tg), bytes: pg.length });
   }
   fs.writeFileSync(path.join(outDir, 'vendedores.json'), JSON.stringify(panelesV, null, 1));
 }
