@@ -2,8 +2,8 @@ name: Paneles vendedores
 
 on:
   schedule:
-    # Cada 60 minutos, todo el dia (minuto 20 de cada hora)
-    - cron: '20 * * * *'
+    # Cada 60 minutos, todo el dia (minuto 45: despues del .bat que corre a las :30)
+    - cron: '45 * * * *'
   workflow_dispatch:
 
 permissions:
