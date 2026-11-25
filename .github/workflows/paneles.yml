@@ -121,9 +121,36 @@ jobs:
             git add ultima-ejecucion.txt && git commit -m "Mantener activa la tarea" && git push
           fi
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: site
 
-      - id: deploy
+      # GitHub a veces tarda en "ver" el paquete recien subido y la publicacion falla con
+      # 'No artifacts named "github-pages" were found'. Se espera un poco y se reintenta hasta 2 veces.
+      - name: Esperar a que GitHub registre el paquete
+        run: sleep 20
+
+      - id: deploy1
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Esperar antes de reintentar
+        if: steps.deploy1.outcome == 'failure'
+        run: sleep 45
+
+      - id: deploy2
+        if: steps.deploy1.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Esperar antes del ultimo intento
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: sleep 90
+
+      - id: deploy3
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+
+      - id: deploy
+        name: Direccion publicada
+        run: echo "page_url=${{ steps.deploy1.outputs.page_url || steps.deploy2.outputs.page_url || steps.deploy3.outputs.page_url }}" >> "$GITHUB_OUTPUT"
